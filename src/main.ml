@@ -37,7 +37,7 @@ let rec optimize n e =
        in
   if e = e'
   then e
-  else iter (n - 1) e'
+  else optimize (n - 1) e'
   
 let () =
   let filename = Sys.argv.(1) in
