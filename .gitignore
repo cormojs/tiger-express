@@ -1,0 +1,13 @@
+out/
+*~
+*.cmi
+*.cmo
+*.cmt
+*.cmx
+src/tiger*
+src/lexer.ml
+src/parser.ml
+.omakedb
+.omakedb.lock
+*omc
+_build/

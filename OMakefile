@@ -1,0 +1,23 @@
+PROGRAM = tiger
+
+
+NATIVE_ENABLE = true
+
+# ocamlfind を使う場合
+USE_OCAMLFIND = true
+# ocamlfind で探して使うパッケージ
+OCAMLPACKS = llvm ppx_import ppx_deriving.show batteries
+
+OCAMLCFLAGS=-g
+
+BYTE_ENABLED=true
+
+
+.SUBDIRS: src
+
+# 掃除
+.PHONY: clean
+clean:
+  rm \
+     $(filter-proper-targets $(ls R, src))
+
