@@ -1,0 +1,28 @@
+FILES[]=
+	id
+	m
+	s
+	type 
+	syntax
+	lexer
+	parser
+	env
+	typing
+	kNormal
+	alpha
+	beta
+	assoc
+	closure
+	inline
+	constFold
+	asm
+	virtual
+	regAlloc
+	emit
+	main
+OCAMLYACC=menhir --explain
+OCamlGeneratedFiles(lexer.ml parser.mli parser.ml)
+
+OCamlProgram(tiger, $(FILES))
+
+.DEFAULT: tiger$(EXE) tiger.run

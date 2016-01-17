@@ -4,6 +4,12 @@ out/
 *.cmo
 *.cmt
 *.cmx
+*.o
+*.cmti
+*.automaton
+*.conflicts
+*.mli
+*.output
 src/tiger*
 src/lexer.ml
 src/parser.ml
