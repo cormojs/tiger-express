@@ -5,50 +5,51 @@ exception VirtualException of string
 let data = ref []
 
 
-let classify xts ini adds addi = 
+let classify xts ini adds addi =
   List.fold_left (fun acc (x, t) -> match t with
   | Env.VarEntry Type.Unit -> acc
   | Env.VarEntry Type.String -> adds acc x
   | _ -> addi acc x t) ini xts
 
-let separate xts = classify xts ([], []) 
+let separate xts = classify xts ([], [])
   (fun (int, string) x -> (int, string @ [x]))
   (fun (int, string) x _ -> (int @ [x], string))
 
 let expand xts ini adds addi = classify xts ini
-  (fun (offset, acc) x -> 
+  (fun (offset, acc) x ->
     let offset' = align offset in
     offset' + 8, adds x offset' acc)
-  (fun (offset, acc) x t -> 
+  (fun (offset, acc) x t ->
     offset + 4, addi x t offset acc)
 
 let get_field_offset venv x fname =
-  begin match Env.peel (M.find x venv) with
-  | Env.VarEntry (Type.Record (fields, _)) ->
-    let fnames = List.map fst @@ Type.M.bindings fields in
-    begin match BatList.index_of fname fnames with
+  try
+    match Env.peel (M.find x venv) with
+    | Env.VarEntry (Type.Record (fields, _)) ->
+      let fnames = List.map fst @@ Type.M.bindings fields in
+      begin match BatList.index_of fname fnames with
       | Some i -> (
 	4 * i)
       | None -> raise (VirtualException (fname ^ " not found"))
-    end
-  | _ -> raise (VirtualException ("not a variable: " ^ x))
-  end
+      end
+    | _ -> raise (VirtualException ("not a variable: " ^ x))
+  with Not_found -> raise (VirtualException ("not found: " ^ x))
 
 let convert_str s =
-  let convert = function 
+  let convert = function
     | '\n' as c -> "\\" ^ (string_of_int @@ int_of_char c)
     | c -> String.make 1 c in
-  (BatString.replace_chars 
+  (BatString.replace_chars
      convert
      (Scanf.unescaped @@ Scanf.unescaped s))
   ^ "\\0"
-  
+
 let rec g tenv venv = function
   | Closure.Unit -> Ans Nop
   | Closure.Int i -> Ans (Mov (C i))
   | Closure.String s ->
-    let l = 
-      try fst @@ List.find (fun (_, s') -> s = s') !data 
+    let l =
+      try fst @@ List.find (fun (_, s') -> s = s') !data
       with Not_found ->
 	let l = Id.L (Id.genid "l") in
 	data := (l, convert_str s) :: !data;
@@ -84,7 +85,7 @@ let rec g tenv venv = function
 		     e) ->
     let e' = g tenv (M.add x (Env.FunEntry (args_ty, ret_ty)) venv) e in
     let offset, store_fv = List.fold_left (fun (offset, e) y ->
-      offset + 4, seq (MovS (y, x, C offset, 1), e)) 
+      offset + 4, seq (MovS (y, x, C offset, 1), e))
       (4, e')
       ys in
     Let ((x, ret_ty), Mov (V reg_hp),
@@ -98,9 +99,10 @@ let rec g tenv venv = function
   | Closure.AppDir (Id.L x, ys) ->
     Ans (CallDir (Id.L x, ys))
   | Closure.Record (fields, name) ->
+    if not @@ M.mem name tenv then raise (VirtualException ("type not found: " ^ name));
     let y = Id.genid "r" in
     let xs = begin match M.find name tenv with
-      | Type.Record (fm, _) -> 
+      | Type.Record (fm, _) ->
 	let rec arrange = function
 	  | [], _ -> []
 	  | key :: keys, assocs ->
@@ -111,14 +113,14 @@ let rec g tenv venv = function
 	arrange (fnames, fields)
       | _ -> raise (VirtualException ("not a record type: " ^ name))
     end in
-    let offset, store = List.fold_left (fun (offset, e) x -> 
+    let offset, store = List.fold_left (fun (offset, e) x ->
       offset + 4, seq (MovS (x, y, C offset, 1), e))
       (0, Ans (Mov (V y)))
       xs in
     Let ((y, M.find name tenv), Mov (V reg_hp),
 	 Let ((reg_hp, Type.Int), Add (reg_hp, C (align offset)),
 	      store))
-  | Closure.Var (KNormal.SimpleVar x) -> 
+  | Closure.Var (KNormal.SimpleVar x) ->
     begin match M.find x venv with
     | Env.VarEntry Type.Unit -> Ans Nop
     | _ -> Ans (Mov (V x))
@@ -134,7 +136,7 @@ let rec g tenv venv = function
     | Env.VarEntry (Type.Record (fields, _)) ->
       let offset = get_field_offset venv x fname in
       Ans (MovO (x, C offset, 4))
-    | entry -> raise (VirtualException 
+    | entry -> raise (VirtualException
 			("not a record type: " ^ (Env.show entry)))
     end
   | Closure.Assign (KNormal.SimpleVar x, y) ->
@@ -149,7 +151,7 @@ let rec g tenv venv = function
     let offset = get_field_offset venv x fname in
     Ans (MovS (y, x, C offset, 4))
   | Closure.Sequence [] -> Ans Nop
-  | Closure.Sequence (e::es) -> 
+  | Closure.Sequence (e::es) ->
     let xt = Id.gentmp Type.Unit, Type.Unit in
     let e1' = g tenv venv e in
     begin match g tenv venv (Closure.Sequence es) with
@@ -158,7 +160,7 @@ let rec g tenv venv = function
     end
 
 
-let h { Closure.name = Id.L x, ty; 
+let h { Closure.name = Id.L x, ty;
 	Closure.args = yts;
 	Closure.formal_fv = zts;
 	Closure.body = body } =
@@ -172,7 +174,7 @@ let h { Closure.name = Id.L x, ty;
     (List.map fst zts) in
   { name = Id.L x; args = List.map fst yts; body = load; ret = ty }
 
-let f (Closure.Prog (fundecs, exp)) = 
+let f (Closure.Prog (fundecs, exp)) =
   data := [];
   let fundecs' = List.map h fundecs in
   let exp' = g M.empty M.empty exp in
