@@ -16,20 +16,31 @@ let rec unify pos = function
   | (Type.Name _ as t1), t2 -> unify pos (name_ty pos t1, t2)
   | t1, (Type.Name _ as t2) -> unify pos (t1, name_ty pos t2)
   | (Type.Record (m1, name1) as t1), (Type.Record (m2, name2) as t2) ->
-    if name2 <> name2 then begin
+    if name1 <> name2 then begin
       raise (UnifyError (pos, t1, t2));
     end;
     unify_fields pos (Type.M.bindings m1, Type.M.bindings m2)
   | Type.Nil, Type.Record _ -> ()
   | Type.Record _, Type.Nil -> ()
-  | t1, t2 ->
-    if t1 <> t2 then raise (UnifyError (pos, t1, t2))
+  | t1, t2 when t1 <> t2 -> raise (UnifyError (pos, t1, t2))
+  | _, _ -> ()
 
 and is_unified pos (t1, t2) =
   try unify pos (t1, t2);
       true
   with _ -> false
-      
+
+and unify' pos = function
+  | (Type.Name _ as t1), t2 -> unify' pos (name_ty pos t1, t2)
+  | t1, (Type.Name _ as t2) -> unify' pos (t1, name_ty pos t2)
+  | (Type.Record (m1, name1) as t1), (Type.Record (m2, name2) as t2) ->
+    if name1 <> name2 then
+      raise (UnifyError (pos, t1, t2));
+  | Type.Nil, Type.Record _ -> ()
+  | Type.Record _, Type.Nil -> ()
+  | t1, t2 when t1 <> t2 -> raise (UnifyError (pos, t1, t2))
+  | _, _ -> ()
+    
 and unify_fields pos (f1, f2) =
   List.iter2
     (fun (n1, t1) (n2, t2) ->
@@ -37,7 +48,7 @@ and unify_fields pos (f1, f2) =
 	raise (Error (pos,
 		      "field name doesn't match "
 		      ^ n1 ^ " with " ^ n2));
-      unify pos (t1, t2))
+      unify' pos (t1, t2))
     f1 f2
 
     
@@ -78,7 +89,7 @@ let rec infer tenv venv = function
     infer tenv venv exp |> ignore;
     infer tenv venv @@ Sequence (exps, pos)
   | Call (fun_name, args, pos) ->
-    if (not @@ M.mem fun_name venv)
+    if not @@ M.mem fun_name venv
     then (raise (Error (pos, "udefined function name: " ^ fun_name)))
     else begin
       match M.find fun_name venv with
@@ -191,14 +202,13 @@ and insert_dec (tenv, venv) = function
       end in
     let venv' = List.fold_left entry_fun_dec venv fundecs in
     let unify_fun (name, args, result_opt, body_exp, pos) = 
-      let name_tys = List.map
-	(fun (name, ty_name) -> (name, Env.VarEntry (M.find ty_name tenv)))
+      let name_tys = List.map (fun (name, ty_name) -> 
+	(name, Env.VarEntry (M.find ty_name tenv)))
 	args in
-      let venv'' = List.fold_left (fun m (k, v) -> M.add k v m) venv' name_tys in
-      begin 
-	unify pos (result_ty pos result_opt, infer tenv venv'' body_exp);
-      end in
-    
+      let venv'' = List.fold_left 
+	(fun m (k, v) -> M.add k v m) venv' name_tys in
+      unify pos (result_ty pos result_opt, infer tenv venv'' body_exp)
+      in
     List.iter unify_fun fundecs;
     (tenv, venv')
     
