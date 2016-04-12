@@ -1,8 +1,8 @@
 type token = [%import: Parser.token] [@@deriving show]
 
 exception Error
-  
-let rec print_lex lexbuf = 
+
+let rec print_lex lexbuf =
   match Lexer.token lexbuf with
   | Parser.EOF -> print_newline ()
   | tok -> begin
@@ -11,7 +11,7 @@ let rec print_lex lexbuf =
     print_lex lexbuf
   end
 
-let parse lexbuf = 
+let parse lexbuf =
   try Parser.program Lexer.token lexbuf
   with exn -> begin
     let curr = lexbuf.Lexing.lex_curr_p in
@@ -24,21 +24,20 @@ let parse lexbuf =
     raise exn
   end
 
+
 let rec optimize n e =
   Format.eprintf "iteration %d@." n;
-  if n = 0 
-  then e 
-  else let e' = 
-	 Beta.f e
+  if n = 0
+  then e
+  else let e' =
+	       Beta.f e
          |> Assoc.f
-	 |> Inline.f
-	 (* |> ConstFold.f *)
-	 (* |> Elim.f *)
+	       |> Inline.f
        in
   if e = e'
   then e
   else optimize (n - 1) e'
-  
+
 let () =
   let filename = Sys.argv.(1) in
   let file_chan = open_in filename in
@@ -53,7 +52,7 @@ let () =
       |> Virtual.f
       |> RegAlloc.f
       |> Emit.f stdout
-    with 
+    with
     | Typing.UnifyError(pos, t1, t2) -> begin
       Format.eprintf "%s@." @@ Syntax.show_p pos;
       Format.eprintf "%s@." @@ "unify error: ";
