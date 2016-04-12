@@ -11,7 +11,7 @@ let id_of_typ = function
   | Type.Int      -> "i"
   | Type.String   -> "s"
   | Type.Array _  -> "a"
-  | Type.Name _   -> raise Error
+  | Type.Name _   -> "named"
   | Type.Unit     -> "u"
 
 let genid s = 
