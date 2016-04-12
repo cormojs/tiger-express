@@ -44,7 +44,7 @@ let rec g env = function
         M.empty
         args'
         args in
-      Alpha.alpha_convert env' body
+      Alpha.alpha_convert M.empty env' body
   | e -> e
 
 let f e = g M.empty e
