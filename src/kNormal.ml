@@ -1,7 +1,7 @@
 exception KNormalizeError of string
 exception ConvertError
-  
-type t = 
+
+type t =
 | Int of int
 | String of string
 | Add of Id.t * Id.t
@@ -21,35 +21,38 @@ type t =
 | Record of (Id.t * Id.t) list * Id.t
 (* | Phi of Id.t * Id.t *)
 [@@deriving show]
- 
-and lvalue = 
+
+and lvalue =
 | SimpleVar of Id.t
 | SubscriptVar of Id.t * Id.t
 | FieldVar of Id.t * Id.t
 
 and comp = | Eq | Le | Lt
 
-and dec = 
+and dec =
 | VarDec of Id.t * Type.t * t
 | TypeDecs of (Id.t * Type.t) list
 | FunctionDecs of fundec list
 
 and fundec = Id.t * (Id.t * Type.t) list * Type.t * t
 
-let peel_typ = function 
+let peel_typ = function
   | Type.Name (_, r) -> begin match !r with
     | Some ty -> ty
     | None -> raise (KNormalizeError "cannot peel type")
   end
   | ty -> ty
-  
-let insert_let(ex, ty) kont = 
-  match ex with 
+
+let insert_let(ex, ty) kont =
+  match ex with
   | Var (SimpleVar v) -> kont v
-  | _ -> 
-    let v = Id.gentmp ty in
-    let ex', ty' = kont v in
-    Let(VarDec (v, ty, ex), ex'), ty'
+  | _ ->
+    try
+      let v = Id.gentmp ty in
+      let ex', ty' = kont v in
+      Let(VarDec (v, ty, ex), ex'), ty'
+    with Id.Error ->
+      raise (KNormalizeError ("Let type error: " ^ Type.show ty))
 
 let dummy = Lexing.dummy_pos
 
@@ -57,7 +60,7 @@ let is_comp_op = function
 | Syntax.OpAdd | Syntax.OpSub | Syntax.OpMul | Syntax.OpDiv -> false
 | Syntax.OpGe | Syntax.OpGt | Syntax.OpLe
 | Syntax.OpLt | Syntax.OpEq | Syntax.OpNeq -> true
-      
+
 let convert_comp_op (x, y) = function 
   | Syntax.OpEq | Syntax.OpNeq -> (Eq, x, y)
   | Syntax.OpLe -> (Le, x, y)
@@ -78,7 +81,7 @@ let rec k_normalize_lvalue tenv venv = function
     insert_let (lval_name, lval_typ)
       (fun name -> match peel_typ lval_typ with
       | Type.Record (fields, _) ->
-	begin 
+	begin
 	  try Var (FieldVar (name, fname)), Type.M.find fname fields 
 	  with Not_found -> raise (KNormalizeError "Field name not found")
 	end
@@ -87,7 +90,7 @@ let rec k_normalize_lvalue tenv venv = function
     let lval_name, lval_typ = k_normalize_lvalue tenv venv lval in
     insert_let (lval_name, lval_typ)
       (fun name -> insert_let (k_normalize tenv venv exp)
-	(fun sub -> match lval_typ with 
+	(fun sub -> match lval_typ with
 	| Type.Array(ty, _) -> Var (SubscriptVar (name, sub)), ty
 	| _ -> raise (KNormalizeError "")))
 
@@ -119,7 +122,6 @@ and k_normalize_decs tenv venv dec kont = match dec with
       (name, args', body_ty, body_exp) in
     let fundecs' = List.map convert_fundec fundecs in
     Let (FunctionDecs fundecs', body_exp), body_typ
-	
 
 and k_normalize tenv venv = function
   (* Int, String, Unitはそのまま変換 *)
@@ -276,13 +278,17 @@ and k_normalize tenv venv = function
       k_normalize tenv' venv' (Syntax.Let (decs, body_exp, p)))
   | Syntax.Let ([], body_exp, _) ->
     k_normalize tenv venv body_exp
-  | Syntax.Call (name, args, _) -> 
+  | Syntax.Call (name, args, _) ->
     begin try match M.find name venv with
     | Env.VarEntry _ -> raise (KNormalizeError "This is a variable")
     | Env.FunEntry (_, ret_ty) ->
-      let convert_arg arg = 
+      let convert_arg arg =
 	let exp, ty = k_normalize tenv venv arg in
-	(Id.gentmp ty, (exp, ty)) in
+	let ty' = Type.peel ty in
+	try (Id.gentmp ty', (exp, ty))
+	with Id.Error ->
+	  raise (KNormalizeError ("Call Type Error: " ^ Type.show ty'))
+      in
       let args' = List.map convert_arg args in
       let call = Call (name, List.map fst args') in
       let entry_let body_exp (name, (exp, ty)) = 
@@ -293,7 +299,11 @@ and k_normalize tenv venv = function
   | Syntax.Record (fields, name, _) ->
     let convert_field (fname, synexp) =
       let exp, ty = k_normalize tenv venv synexp in
-      ((fname, Id.gentmp ty), (exp, ty)) in
+      try 
+	((fname, Id.gentmp ty), (exp, ty)) 
+      with Id.Error -> 
+	raise (KNormalizeError ("Field Type Error: " ^ Type.show ty))
+    in
     let fields' = List.map convert_field fields in
     let typ = begin 
       try begin match M.find name tenv with
@@ -308,7 +318,5 @@ and k_normalize tenv venv = function
     let entry_let body_exp ((_, name), (exp, ty)) =
       Let (VarDec (name, ty, exp), body_exp) in
     List.fold_left entry_let record fields', typ
-
-    
 
 let f e = fst @@ k_normalize Env.base_tenv Env.base_venv e
