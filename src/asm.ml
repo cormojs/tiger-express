@@ -31,7 +31,7 @@ and exp =
 | Restore of Id.t
 [@@deriving show]
 
-type fundef = { name : Id.l; 
+type fundef = { name : Id.l;
 		args : Id.t list;
 		body : t;
 		ret : Type.t }
