@@ -61,7 +61,7 @@ let rec fv = function
   | LetType (_, e) -> fv e
   | MakeCls ((x, _, _) , { entry = _; actual_fv = ys }, e) -> 
     S.remove x @@ S.union (S.of_list ys) (fv e)
-  | AppCls (x, ys) -> S.of_list @@ x::ys
+  | AppCls (_, ys) -> S.of_list ys
   | AppDir (_, ys) -> S.of_list ys
 
     
@@ -121,9 +121,9 @@ let rec g venv known = function
     		|> S.diff (fv body')
     		|> S.elements in
       List.iter (Format.eprintf "fvs: %s %s@." x) fvs;
-      let ty = function
+      let ty name = function
 	| Env.VarEntry t -> t
-	| Env.FunEntry _ -> raise (UnimplementedError "") in
+	| Env.FunEntry _ as e -> raise (UnimplementedError (name ^ " has fun type: " ^ Env.show e)) in
       let find x venv = 
 	try M.find x venv
 	with Not_found -> 
@@ -131,7 +131,7 @@ let rec g venv known = function
 	   assert false) in
       toplevel := ({ name = (Id.L x, ret_typ);
                      args = yts;
-                     formal_fv = List.map (fun v -> v, ty @@ find v venv) fvs;
+                     formal_fv = List.map (fun v -> v, ty v @@ find v venv) fvs;
                      body = body' }) :: !toplevel;
       if has_no_fv fundec
       then e'
